@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zombie vs Vampire</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Creepster&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: 'Creepster', cursive;
+        }
+        h1 {
+            font-size: 4rem;
+            color: #e60000;
+            text-shadow: 2px 2px 4px #000;
+            margin-bottom: 10px;
+        }
+        #gameCanvas {
+            background: url('https://wallpapers.com/images/hd/graveyard-at-midnight-nh5f9wsl0porwc91.jpg');
+            background-size: auto;
+            background-position: center;
+            border: 5px solid #444;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            cursor: none;
+        }
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px #000;
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 10px;
+        }
+        #instructions {
+            margin-top: 20px;
+            font-size: 1.2rem;
+            font-family: Arial, sans-serif;
+            color: #ccc;
+        }
+        #gameOverScreen, #specialAbilityNotification {
+            display: none;
+            position: absolute;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+        }
+        #gameOverScreen {
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            font-size: 5rem;
+        }
+        #gameOverScreen h2 {
+            margin: 0;
+            color: #e60000;
+        }
+        #gameOverScreen p {
+            font-size: 2rem;
+            margin-top: 10px;
+        }
+        #specialAbilityNotification {
+             bottom: 30px;
+             left: 50%;
+             transform: translateX(-50%);
+             font-size: 2rem;
+             color: #ffdd00;
+             background-color: rgba(0,0,0,0.7);
+             padding: 15px 25px;
+             border-radius: 15px;
+             border: 2px solid #ffdd00;
+             animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+            100% { transform: translateX(-50%) scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Zombie vs Vampire</h1>
+
+    <div id="ui-container">
+        <div id="scoreEl">Score: 0</div>
+        <div id="waveEl">Wave: 1</div>
+        <div id="ammoEl">Bats: 10</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="instructions">
+        W/S or Arrow Keys to Move | Spacebar to Shoot | Enter for Bat Swarm (when ready)
+    </div>
+
+    <div id="gameOverScreen">
+        <h2>GAME OVER</h2>
+        <p id="finalScoreEl"></p>
+        <p style="font-size: 1.5rem; margin-top: 20px;">Redirecting to Road...</p>
+    </div>
+
+    <div id="specialAbilityNotification">
+        Bat Swarm Ready! Press ENTER!
+    </div>
+
+    <script>
+        // --- Canvas and Context Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth * 0.8;
+        canvas.height = window.innerHeight * 0.7;
+
+        // --- Game Variables ---
+        let score = 0;
+        let wave = 1;
+        let gameFrame = 0;
+        let isGameOver = false;
+        const keys = { w: false, s: false, up: false, down: false, space: false, enter: false };
+        
+        // Wave-specific variables
+        let totalZombiesForWave = 10;
+        let zombiesSpawnedThisWave = 0;
+        let maxZombiesOnScreen = 7;
+
+        // New Feature Variables
+        let batsFired = 0;
+        const maxBats = 10; // Changed from 5 to 10
+        let isReloading = false;
+        let specialAbilityKills = 0;
+        const killsForSpecial = 20;
+        let isSpecialAbilityReady = false;
+        let isSwarmActive = false;
+
+        // --- UI Elements ---
+        const scoreEl = document.getElementById('scoreEl');
+        const waveEl = document.getElementById('waveEl');
+        const ammoEl = document.getElementById('ammoEl');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreEl = document.getElementById('finalScoreEl');
+        const specialAbilityNotification = document.getElementById('specialAbilityNotification');
+
+        // --- Image Loading ---
+        const vampireImage = new Image();
+        vampireImage.src = 'https://pngimg.com/uploads/vampire/vampire_PNG35.png';
+        vampireImage.onerror = () => { vampireImage.src = 'https://placehold.co/60x90/e60000/ffffff?text=Vampire'; };
+
+        const zombieImage = new Image();
+        zombieImage.src = 'https://www.pinclipart.com/picdir/big/55-556159_clipart-transparent-download-cartoon-transparent-zombie-zombie-cartoon.png'; 
+        zombieImage.onerror = () => { zombieImage.src = 'https://placehold.co/60x90/2a5c2a/ffffff?text=Zombie'; };
+
+        const batImage = new Image();
+        batImage.src = 'https://pngimg.com/uploads/bat/bat_PNG34.png'; 
+        batImage.onerror = () => { batImage.src = 'https://placehold.co/40x20/000000/ffffff?text=Bat'; };
+
+        // --- Player (Vampire) Class ---
+        class Vampire {
+            constructor() {
+                this.x = 50;
+                this.y = canvas.height / 2;
+                this.width = 60;
+                this.height = 90;
+                this.speed = 10;
+            }
+            update() {
+                if ((keys.w || keys.up) && this.y > 0) this.y -= this.speed;
+                if ((keys.s || keys.down) && this.y < canvas.height - this.height) this.y += this.speed;
+            }
+            draw() {
+                ctx.drawImage(vampireImage, this.x, this.y, this.width, this.height);
+            }
+        }
+
+        // --- Projectile (Bat) Class ---
+        class Bat {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 40;
+                this.height = 20;
+                this.speed = 12;
+            }
+            update() { this.x += this.speed; }
+            draw() { ctx.drawImage(batImage, this.x, this.y, this.width, this.height); }
+        }
+
+        // --- Enemy (Zombie) Class ---
+        class Zombie {
+            constructor() {
+                this.width = 60;
+                this.height = 90;
+                this.x = canvas.width;
+                this.y = Math.random() * (canvas.height - this.height);
+                this.speed = Math.random() * 1.5 + (1 + wave * 0.3);
+                this.health = 100;
+            }
+            update() { this.x -= this.speed; }
+            draw() { ctx.drawImage(zombieImage, this.x, this.y, this.width, this.height); }
+        }
+        
+        // --- Bat Swarm Particle Class ---
+        class BatParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 15 + 10; // Bats of various sizes
+                this.speedX = Math.random() * 5 + 5; // Move right
+                this.speedY = Math.random() * 6 - 3; // Spread up and down
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+            }
+            draw() {
+                ctx.drawImage(batImage, this.x, this.y, this.size * 2, this.size);
+            }
+        }
+
+        // --- Game Object Initialization ---
+        const player = new Vampire();
+        const bats = [];
+        const zombies = [];
+        const swarmParticles = [];
+
+        // --- Game Functions ---
+        function spawnZombies() {
+            const spawnInterval = Math.max(30, 100 - wave * 5);
+            if (gameFrame % spawnInterval === 0 && zombies.length < maxZombiesOnScreen && zombiesSpawnedThisWave < totalZombiesForWave) {
+                zombies.push(new Zombie());
+                zombiesSpawnedThisWave++;
+            }
+        }
+
+        function handleBats() {
+            for (let i = bats.length - 1; i >= 0; i--) {
+                bats[i].update();
+                bats[i].draw();
+                if (bats[i].x > canvas.width) bats.splice(i, 1);
+            }
+        }
+
+        function handleZombies() {
+            for (let i = zombies.length - 1; i >= 0; i--) {
+                zombies[i].update();
+                zombies[i].draw();
+                if (zombies[i].x < 0) endGame();
+
+                for (let j = bats.length - 1; j >= 0; j--) {
+                    if (
+                        bats[j] && zombies[i] &&
+                        bats[j].x < zombies[i].x + zombies[i].width &&
+                        bats[j].x + bats[j].width > zombies[i].x &&
+                        bats[j].y < zombies[i].y + zombies[i].height &&
+                        bats[j].y + bats[j].height > zombies[i].y
+                    ) {
+                        zombies[i].health -= 50;
+                        bats.splice(j, 1);
+                        if (zombies[i].health <= 0) {
+                            score += 10;
+                            specialAbilityKills++;
+                            if (specialAbilityKills >= killsForSpecial && !isSpecialAbilityReady) {
+                                isSpecialAbilityReady = true;
+                                specialAbilityNotification.style.display = 'flex';
+                            }
+                            zombies.splice(i, 1);
+                            if (zombies.length === 0 && zombiesSpawnedThisWave >= totalZombiesForWave) {
+                                nextWave();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        function handleBatSwarm() {
+            for (let i = swarmParticles.length - 1; i >= 0; i--) {
+                swarmParticles[i].update();
+                swarmParticles[i].draw();
+                if (swarmParticles[i].x > canvas.width) {
+                    swarmParticles.splice(i, 1);
+                }
+            }
+        }
+        
+        function nextWave() {
+            wave++;
+            totalZombiesForWave = 10 + wave * 5;
+            maxZombiesOnScreen = 7 + wave;
+            zombiesSpawnedThisWave = 0;
+            score += 100;
+        }
+
+        function activateBatSwarm() {
+            if (!isSpecialAbilityReady || isSwarmActive) return;
+            isSpecialAbilityReady = false;
+            isSwarmActive = true;
+            specialAbilityNotification.style.display = 'none';
+
+            // Create a burst of bat particles from the player
+            for (let i = 0; i < 100; i++) {
+                swarmParticles.push(new BatParticle(player.x + player.width / 2, player.y + player.height / 2));
+            }
+
+            // After the swarm animation, clear zombies and reset
+            setTimeout(() => {
+                score += zombies.length * 10; // Award points
+                zombies.length = 0; // Kill all zombies on screen
+                specialAbilityKills = 0;
+                isSwarmActive = false;
+                swarmParticles.length = 0; // Clear particles
+            }, 1500); // Animation duration
+        }
+
+        function reloadBats() {
+            isReloading = true;
+            ammoEl.textContent = 'Reloading...';
+            setTimeout(() => {
+                batsFired = 0;
+                isReloading = false;
+            }, 2000); // 2-second reload time
+        }
+
+        function updateUI() {
+            scoreEl.textContent = 'Score: ' + score;
+            waveEl.textContent = 'Wave: ' + wave;
+            if (!isReloading) {
+                ammoEl.textContent = 'Bats: ' + (maxBats - batsFired);
+            }
+        }
+
+        function endGame() {
+            if (isGameOver) return;
+            isGameOver = true;
+            finalScoreEl.textContent = 'Final Score: ' + score;
+            gameOverScreen.style.display = 'flex';
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 4000);
+        }
+
+        function animate() {
+            if (isGameOver) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            player.update();
+            player.draw();
+            handleBats();
+            spawnZombies();
+            handleZombies();
+            if (isSwarmActive) {
+                handleBatSwarm();
+            }
+            updateUI();
+            gameFrame++;
+            requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') keys.up = true;
+            if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') keys.down = true;
+            if (e.key === ' ') keys.space = true;
+            if (e.key === 'Enter' && isSpecialAbilityReady) {
+                activateBatSwarm();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'w' || e.key === 'W' || e.key === 'ArrowUp') keys.up = false;
+            if (e.key === 's' || e.key === 'S' || e.key === 'ArrowDown') keys.down = false;
+            if (e.key === ' ') {
+                if (!isReloading && batsFired < maxBats && !isSwarmActive) {
+                    bats.push(new Bat(player.x + player.width, player.y + player.height / 2 - 10));
+                    batsFired++;
+                    if (batsFired >= maxBats) {
+                        reloadBats();
+                    }
+                }
+                keys.space = false;
+            }
+        });
+        
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth * 0.8;
+            canvas.height = window.innerHeight * 0.7;
+        });
+
+        // --- Start Game ---
+        vampireImage.onload = animate;
+        if (vampireImage.complete) animate();
+        
+
+    </script>
+</body>
+</html>

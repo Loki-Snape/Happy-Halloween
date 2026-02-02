@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mridul Jha - Interactive Vampire Resume</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        #scene-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        #ui-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            z-index: 10;
+        }
+        .info-panel {
+            background: rgba(0, 0, 0, 0.75);
+            border: 1px solid rgba(150, 0, 0, 0.5);
+            border-radius: 1rem;
+            padding: 2rem;
+            width: 90vw;
+            max-width: 500px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            pointer-events: auto;
+        }
+        .info-panel h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #dc2626; /* Red color */
+            border-bottom: 2px solid #dc2626;
+            padding-bottom: 0.5rem;
+        }
+        .info-panel p, .info-panel li {
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 0.75rem;
+        }
+        .info-panel a {
+            color: #f87171;
+            text-decoration: underline;
+        }
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #111827;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: opacity 1s ease;
+        }
+        #hint-container {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.875rem;
+            background: rgba(0,0,0,0.4);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            pointer-events: none;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="scene-container"></div>
+    <div id="ui-container"></div>
+    <div id="hint-container">Use ◄ ▲ ▼ ► Arrow Keys to fly <br> Press 'Tab' to toggle details</div>
+    <div id="loading-screen"><p>Loading Spooky Resume...</p></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- SCENE SETUP ---
+        let scene, camera, renderer, controls;
+        let player, bat, vampire, mummy;
+        let isUIVisible = true;
+        let activeSectionIndex = -1;
+        const keysPressed = {};
+        let zombies = [];
+        
+        // --- Player & Path Controls ---
+        const pathRadius = 60;
+        const playerSpeed = 0.02;
+        const lateralSpeed = 0.1;
+        const roadWidth = 12;
+        let playerAngle = 0;
+        let playerLateralOffset = 0;
+        let clock = new THREE.Clock();
+
+        // --- RESUME DATA ---
+        const resumeData = [
+            { title: "Summary", content: `<h2>Mridul Jha</h2><p><strong>Third-Year B.Tech Student | Computer Science & Engineering</strong></p><p>A third-year B.Tech student specializing in Computer Science & Engineering, with a strong foundation in web development technologies like HTML, CSS, and JavaScript. Passionate about solving problems creatively and eager to use programming skills in real-world situations.</p><p><strong>Email:</strong> <a href="mailto:himriduljha11@gmail.com">himriduljha11@gmail.com</a></p><p><strong>LinkedIn:</strong> <a href="https://linkedin.com/in/mridul-jha" target="_blank">linkedin.com/in/mridul-jha</a></p><p><strong>GitHub:</strong> <a href="https://github.com/Loki-Snape" target="_blank">github.com/Loki-Snape</a></p>` },
+            { title: "Education", content: `<h2>Education</h2><p><strong>Bachelor of Technology (B.Tech), Computer Science</strong></p><p><em>VIT Bhopal University | Aug 2023 - June 2027</em></p>` },
+            { title: "Experience", content: `<h2>Experience</h2><p><strong>Data Analyst Associate Intern | Excelerate</strong></p><p><em>July 2025 - Present</em></p><ul><li>Focused on Data Science and Data Analysis.</li></ul>` },
+            { title: "Projects", content: `<h2>Projects</h2><p><strong>People Counting in Crowd with Night Vision</strong></p><p><em>Sep 2024 - Jan 2025</em></p><p>Developed a project that used night vision technology to count people in a crowd.</p>` },
+            { title: "Key Achievements", content: `<h2>Key Achievements</h2><ul><li>Achieved 10th Rank in the Golden Pen Award hosted by pratilipi.com.</li></ul>`},
+            { title: "Interests", content: `<h2>Interests</h2><ul><li>PR and Outreach Lead at Software Development Club: Involved in community development through outreach programs and the promotion of software solutions.</li></ul>`},
+            { title: "Skills & Certs", content: `<h2>Skills & Certs</h2><p><strong>Languages:</strong> C++, HTML, CSS, JavaScript</p><h2>Certifications</h2><ul><li>Career Essentials in Software Development by Microsoft and LinkedIn</li><li>NPTEL Online Certification</li><li>GEN AI Using IBM Watsonx by IBM</li></ul>` },
+        ].map((section, index, arr) => ({ ...section, angle: (index / arr.length) * Math.PI * 2 }));
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x080311);
+            scene.fog = new THREE.Fog(0x080311, 80, 250);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('scene-container').appendChild(renderer.domElement);
+            
+            const ambientLight = new THREE.AmbientLight(0x9e7fbf, 0.6);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xbfa7ff, 0.8);
+            directionalLight.position.set(-80, 100, 50);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 4096;
+            directionalLight.shadow.mapSize.height = 4096;
+            scene.add(directionalLight);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.minDistance = 10;
+            controls.maxDistance = 150;
+            
+            createWorld();
+            createPlayer();
+            createStops();
+            setupUI();
+
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('keydown', (e) => { keysPressed[e.key] = true; if (e.key === 'Tab') { e.preventDefault(); toggleUIVisibility(); } });
+            window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; });
+            
+            document.getElementById('loading-screen').style.opacity = '0';
+            setTimeout(() => document.getElementById('loading-screen').style.display = 'none', 1000);
+            
+            animate();
+        }
+
+        function createWorld() {
+            const groundGeo = new THREE.PlaneGeometry(600, 600);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 1 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const roadGeometry = new THREE.RingGeometry(pathRadius - roadWidth / 2, pathRadius + roadWidth / 2, 128, 1);
+            const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x2d3748, side: THREE.DoubleSide });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.position.y = 0.1;
+            road.rotation.x = -Math.PI / 2;
+            road.receiveShadow = true;
+            scene.add(road);
+
+            // Pyramid
+            const pyramidRadius = pathRadius - roadWidth / 2 - 10;
+            const pyramidGeo = new THREE.ConeGeometry(pyramidRadius, 30, 4);
+            const pyramidMat = new THREE.MeshStandardMaterial({ color: 0x4a5568 });
+            const pyramid = new THREE.Mesh(pyramidGeo, pyramidMat);
+            pyramid.position.y = 15;
+            pyramid.rotation.y = Math.PI / 4;
+            scene.add(pyramid);
+            
+            mummy = createMummy();
+            scene.add(mummy);
+
+            for (let i = 0; i < 80; i++) {
+                const zombie = createZombie();
+                const angle = Math.random() * Math.PI * 2;
+                const radius = pathRadius + roadWidth + 10 + Math.random() * 60;
+                zombie.position.set(radius * Math.cos(angle), 0, radius * Math.sin(angle));
+                zombie.rotation.y = Math.random() * Math.PI * 2;
+                scene.add(zombie);
+                zombies.push(zombie);
+            }
+        }
+        
+        function createZombie() {
+            const zombie = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.9 });
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 0.5), bodyMat);
+            body.position.y = 1;
+            zombie.add(body);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), bodyMat);
+            head.position.y = 2.4;
+            zombie.add(head);
+            zombie.leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.5, 0.4), bodyMat);
+            zombie.rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.5, 0.4), bodyMat);
+            zombie.leftArm.position.set(-0.7, 1.2, 0);
+            zombie.rightArm.position.set(0.7, 1.2, 0);
+            zombie.add(zombie.leftArm, zombie.rightArm);
+            return zombie;
+        }
+
+        function createMummy() {
+            const mummyGroup = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xeee8aa, roughness: 1 });
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 2.5, 8), bodyMat);
+            body.position.y = 2.25;
+            mummyGroup.add(body);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), bodyMat);
+            head.position.y = 4;
+            mummyGroup.add(head);
+            mummyGroup.leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 2, 8), bodyMat);
+            mummyGroup.rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 2, 8), bodyMat);
+            mummyGroup.leftLeg.position.set(-0.4, 1, 0);
+            mummyGroup.rightLeg.position.set(0.4, 1, 0);
+            mummyGroup.add(mummyGroup.leftLeg, mummyGroup.rightLeg);
+            mummyGroup.scale.set(1.5, 1.5, 1.5);
+            return mummyGroup;
+        }
+
+        function createPlayer() {
+            player = new THREE.Group();
+            
+            // Bat Model
+            bat = new THREE.Group();
+            const batBodyMat = new THREE.MeshStandardMaterial({color: 0x1a202c});
+            const batBody = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), batBodyMat);
+            const wingShape = new THREE.Shape();
+            wingShape.moveTo(0, 0);
+            wingShape.bezierCurveTo(1, 1, 2, 1.5, 3, 0);
+            wingShape.bezierCurveTo(2, -0.5, 1, -0.8, 0, 0);
+            const wingGeo = new THREE.ShapeGeometry(wingShape);
+            bat.leftWing = new THREE.Mesh(wingGeo, batBodyMat);
+            bat.rightWing = new THREE.Mesh(wingGeo, batBodyMat);
+            bat.leftWing.position.set(0.5, 0, 0);
+            bat.rightWing.position.set(-0.5, 0, 0);
+            bat.rightWing.rotation.y = Math.PI;
+            bat.add(batBody, bat.leftWing, bat.rightWing);
+            player.add(bat);
+
+            // Vampire Model
+            vampire = new THREE.Group();
+            const vampMat = new THREE.MeshStandardMaterial({color: 0x4a5568});
+            const vampBody = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 3, 8), vampMat);
+            vampBody.position.y = 1.5;
+            vampire.add(vampBody);
+            const vampHead = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), vampMat);
+            vampHead.position.y = 3.3;
+            vampire.add(vampHead);
+            const cape = new THREE.Mesh(new THREE.ConeGeometry(1, 3, 8, 1, 0, Math.PI), new THREE.MeshStandardMaterial({color: 0x7f1d1d, side: THREE.DoubleSide}));
+            cape.position.y = 1.5;
+            cape.position.z = -0.5;
+            cape.rotation.x = Math.PI/8;
+            vampire.add(cape);
+            vampire.visible = false;
+            player.add(vampire);
+
+            player.position.y = 5; // Flying height
+            scene.add(player);
+        }
+
+        function createStops() {
+            resumeData.forEach(section => {
+                const stopGroup = new THREE.Group();
+                const platformGeo = new THREE.BoxGeometry(18, 0.4, 18);
+                const platformMat = new THREE.MeshStandardMaterial({ color: 0x4a5568 });
+                const platform = new THREE.Mesh(platformGeo, platformMat);
+                platform.position.y = 0.1;
+                stopGroup.add(platform);
+                const loader = new THREE.FontLoader();
+                loader.load('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/fonts/helvetiker_bold.typeface.json', function (font) {
+                    const textGeo = new THREE.TextGeometry(section.title, { font: font, size: 1.2, height: 0.2 });
+                    const textMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                    const textMesh = new THREE.Mesh(textGeo, textMat);
+                    textMesh.geometry.computeBoundingBox();
+                    textMesh.position.set(-textMesh.geometry.boundingBox.max.x / 2, 1, 7);
+                    stopGroup.add(textMesh);
+                });
+                stopGroup.position.set(pathRadius * Math.cos(section.angle), 0, pathRadius * Math.sin(section.angle));
+                stopGroup.rotation.y = -section.angle;
+                scene.add(stopGroup);
+            });
+        }
+
+        function setupUI() {
+            const uiContainer = document.getElementById('ui-container');
+            resumeData.forEach((section, index) => {
+                const panel = document.createElement('div');
+                panel.id = `panel-${index}`;
+                panel.className = 'info-panel';
+                panel.innerHTML = section.content;
+                panel.style.display = 'none';
+                uiContainer.appendChild(panel);
+            });
+        }
+        
+        function toggleUIVisibility() {
+            isUIVisible = !isUIVisible;
+            const uiContainer = document.getElementById('ui-container');
+            if (isUIVisible && activeSectionIndex !== -1) {
+                uiContainer.style.opacity = '1';
+            } else {
+                uiContainer.style.opacity = '0';
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function updatePlayerMovement() {
+            if (keysPressed['ArrowUp']) playerAngle -= playerSpeed;
+            if (keysPressed['ArrowDown']) playerAngle += playerSpeed;
+            if (keysPressed['ArrowLeft']) playerLateralOffset -= lateralSpeed;
+            if (keysPressed['ArrowRight']) playerLateralOffset += lateralSpeed;
+            
+            const outerBoundary = roadWidth / 2 + 1;
+            const innerBoundary = -roadWidth / 2 - 1;
+
+            if (playerLateralOffset > outerBoundary) {
+                window.location.href = 'vampire.html';
+                playerLateralOffset = outerBoundary; 
+            }
+            
+            if (playerLateralOffset < innerBoundary) {
+                window.location.href = 'mummy.html';
+                playerLateralOffset = innerBoundary;
+            }
+        }
+
+        function checkProximity() {
+            const activationAngle = 0.2;
+            let sectionToShow = -1;
+            const twoPi = Math.PI * 2;
+            const normalizedAngle = ((playerAngle % twoPi) + twoPi) % twoPi;
+
+            for (let i = 0; i < resumeData.length; i++) {
+                const sectionAngle = resumeData[i].angle;
+                let diff = Math.abs(normalizedAngle - sectionAngle);
+                let dist = Math.min(diff, twoPi - diff);
+                
+                if (dist < activationAngle) {
+                    sectionToShow = i;
+                    break;
+                }
+            }
+
+            if (sectionToShow !== activeSectionIndex) {
+                const uiContainer = document.getElementById('ui-container');
+                if (activeSectionIndex !== -1) {
+                    const oldPanel = document.getElementById(`panel-${activeSectionIndex}`);
+                    if (oldPanel) oldPanel.style.display = 'none';
+                }
+                if (sectionToShow !== -1) {
+                    bat.visible = false;
+                    vampire.visible = true;
+                    const newPanel = document.getElementById(`panel-${sectionToShow}`);
+                    if (newPanel) {
+                        newPanel.style.display = 'block';
+                        if (isUIVisible) uiContainer.style.opacity = 1;
+                    }
+                } else {
+                    bat.visible = true;
+                    vampire.visible = false;
+                    uiContainer.style.opacity = 0;
+                }
+                activeSectionIndex = sectionToShow;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            
+            updatePlayerMovement();
+            checkProximity();
+            const currentRadius = pathRadius + playerLateralOffset;
+            player.position.x = currentRadius * Math.cos(playerAngle);
+            player.position.z = currentRadius * Math.sin(playerAngle);
+            player.rotation.y = -playerAngle + Math.PI / 2;
+            
+            // Bat flapping animation
+            const flapSpeed = 15;
+            const flapAmplitude = Math.PI / 6;
+            bat.leftWing.rotation.y = Math.sin(clock.elapsedTime * flapSpeed) * flapAmplitude;
+            bat.rightWing.rotation.y = Math.PI - Math.sin(clock.elapsedTime * flapSpeed) * flapAmplitude;
+            
+            // Player Bobbing motion
+            player.position.y = 5 + Math.sin(clock.elapsedTime * 5) * 0.5;
+
+            // Mummy animation
+            const mummyWalkSpeed = 0.3;
+            mummy.rotation.y += delta * mummyWalkSpeed;
+            mummy.position.x = (pathRadius - roadWidth / 2 - 12) * Math.cos(mummy.rotation.y);
+            mummy.position.z = (pathRadius - roadWidth / 2 - 12) * Math.sin(mummy.rotation.y);
+            mummy.leftLeg.position.y = 1 + Math.sin(clock.elapsedTime * 5) * 0.5;
+            mummy.rightLeg.position.y = 1 - Math.sin(clock.elapsedTime * 5) * 0.5;
+
+
+            zombies.forEach(zombie => {
+                if (zombie.leftArm && zombie.rightArm) {
+                    zombie.leftArm.rotation.x = Math.sin(clock.elapsedTime * 2 + zombie.id) * 0.5;
+                    zombie.rightArm.rotation.x = -Math.sin(clock.elapsedTime * 2 + zombie.id) * 0.5;
+                }
+            });
+
+            const cameraOffset = new THREE.Vector3(25 * Math.cos(playerAngle + Math.PI/2), 15, 25 * Math.sin(playerAngle + Math.PI/2));
+            const desiredCameraPosition = player.position.clone().add(cameraOffset);
+            const desiredTargetPosition = player.position.clone();
+
+            camera.position.lerp(desiredCameraPosition, 0.05);
+            controls.target.lerp(desiredTargetPosition, 0.05);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
