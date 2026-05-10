@@ -50,7 +50,7 @@ Contributions are welcome. Keep changes focused, provide a short description wit
 
 ## License
 
-This project is provided under the MIT License. Use freely and credit where appropriate.
+No License
 
 ## Contact
 
