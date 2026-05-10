@@ -4,7 +4,7 @@ A spooky, polished Halloween-themed portfolio and resume experience built with H
 
 ## Overview
 
-This site includes multiple themed pages and an interactive resume presentation designed to make a strong first impression. It is meant to be lightweight, visually engaging, and easy to explore.It is themed around halloween and contains mummy, vampire and zombies.
+This site includes multiple themed pages and an interactive resume presentation designed to make a strong first impression. It is meant to be lightweight, visually engaging, and easy to explore.
 
 ## Features
 
